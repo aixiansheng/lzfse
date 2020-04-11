@@ -1,30 +1,29 @@
 package lzfse
 
 import (
-	"io"
+	"bytes"
 )
 
 type cachedWriter struct {
-	w   io.Writer
-	buf []byte
+	buf * bytes.Buffer
 }
 
-func newCachedWriter(w io.Writer) *cachedWriter {
+func newCachedWriter() *cachedWriter {
 	return &cachedWriter{
-		w:   w,
-		buf: make([]byte, 0, 1024),
+		buf: &bytes.Buffer{},
 	}
 }
 
-func (cw *cachedWriter) Write(b []byte) (int, error) {
-	n, err := cw.w.Write(b)
-	if n > 0 {
-		cw.buf = append(cw.buf, b[:n]...)
-	}
-	return n, err
+func (w *cachedWriter) Write(b []byte) (int, error) {
+	return w.buf.Write(b)
 }
 
-func (cw *cachedWriter) ReadRelativeToEnd(b []byte, offset int64) (copied int, err error) {
-	copied = copy(b, cw.buf[int64(len(cw.buf))-offset:])
+func (w *cachedWriter) ReadRelativeToEnd(b []byte, offset int64) (copied int, err error) {
+	bb := w.buf.Bytes()
+	copied = copy(b, bb[int64(w.buf.Len())-offset:])
 	return
+}
+
+func (w *cachedWriter) Bytes() []byte {
+	return w.buf.Bytes()
 }

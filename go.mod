@@ -1,3 +1,3 @@
-module github.com/aixiansheng/go-pure-lzfse
+module github.com/aixiansheng/lzfse
 
 go 1.14

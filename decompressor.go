@@ -1,7 +1,9 @@
 package lzfse
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -20,9 +22,7 @@ const (
 type decompressor struct {
 	r            *cachedReader
 	w            *cachedWriter
-	pipeR        *io.PipeReader
-	pipeW        *io.PipeWriter
-	handlerError error
+	payload	     io.Reader
 }
 
 func decodeUncompressedBlock(r *cachedReader, w *cachedWriter) (err error) {
@@ -49,45 +49,57 @@ func (d *decompressor) handleBlock(handler blockHandler) (Magic, error) {
 }
 
 func (d *decompressor) Read(b []byte) (int, error) {
-	return d.pipeR.Read(b)
+	if payload, err := d.decompressedPayload(); err == nil {
+		return payload.Read(b)
+	} else {
+		return 0, err
+	}
+}
+
+func (d *decompressor) decompressedPayload() (io.Reader, error) {
+	var err error
+	if d.payload == nil {
+		d.payload, err = d.decompressAll()
+	}
+	return d.payload, err
+}
+
+func (d *decompressor) decompressAll() (io.Reader, error) {
+	var err error
+	magic := LZFSE_NO_BLOCK_MAGIC
+
+	for err == nil {
+		switch magic {
+		case LZFSE_NO_BLOCK_MAGIC:
+			magic, err = readBlockMagic(d.r)
+		case LZFSE_UNCOMPRESSED_BLOCK_MAGIC:
+			magic, err = d.handleBlock(decodeUncompressedBlock)
+		case LZFSE_COMPRESSEDV1_BLOCK_MAGIC:
+			magic, err = d.handleBlock(decodeCompressedV1Block)
+		case LZFSE_COMPRESSEDV2_BLOCK_MAGIC:
+			magic, err = d.handleBlock(decodeCompressedV2Block)
+		case LZFSE_COMPRESSEDLZVN_BLOCK_MAGIC:
+			magic, err = d.handleBlock(decodeLZVNBlock)
+		case LZFSE_ENDOFSTREAM_BLOCK_MAGIC:
+			magic, err = LZFSE_ENDOFSTREAM_BLOCK_MAGIC, io.EOF
+		default:
+			magic, err = INVALID, fmt.Errorf("Bad magic")
+		}
+	}
+
+	if err == io.EOF {
+		// @@@ try just reading from it.. not sure if that works correctly.
+		return bytes.NewReader(d.w.Bytes()), nil
+	}
+
+	return nil, err
 }
 
 func NewReader(r io.Reader) *decompressor {
-	pipeR, pipeW := io.Pipe()
 	d := &decompressor{
 		r:     newCachedReader(r),
-		w:     newCachedWriter(pipeW),
-		pipeR: pipeR,
-		pipeW: pipeW,
+		w:     newCachedWriter(),
 	}
-
-	go func() {
-		var err error
-		magic := LZFSE_NO_BLOCK_MAGIC
-
-		for nil == err {
-			switch magic {
-			case LZFSE_NO_BLOCK_MAGIC:
-				magic, err = readBlockMagic(d.r)
-			case LZFSE_UNCOMPRESSED_BLOCK_MAGIC:
-				magic, err = d.handleBlock(decodeUncompressedBlock)
-			case LZFSE_COMPRESSEDV1_BLOCK_MAGIC:
-				magic, err = d.handleBlock(decodeCompressedV1Block)
-			case LZFSE_COMPRESSEDV2_BLOCK_MAGIC:
-				magic, err = d.handleBlock(decodeCompressedV2Block)
-			case LZFSE_COMPRESSEDLZVN_BLOCK_MAGIC:
-				magic, err = d.handleBlock(decodeLZVNBlock)
-			case LZFSE_ENDOFSTREAM_BLOCK_MAGIC:
-				magic = LZFSE_ENDOFSTREAM_BLOCK_MAGIC
-				err = io.EOF
-			default:
-				panic("Bad magic")
-			}
-		}
-
-		d.handlerError = err
-		d.pipeW.Close()
-	}()
 
 	return d
 }

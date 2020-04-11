@@ -16,6 +16,10 @@ func TestMedium(t *testing.T) {
 	DoDecomp("cmp2.lz", "dec2", "dec2.err", t)
 }
 
+func TestKern(t *testing.T) {
+	DoDecomp("kernel.lzfse", "kernel.dec", "kernel.err", t)
+}
+
 func DoDecomp(compressed, original, errorOutputFile string, t *testing.T) {
 	cmp, err := os.Open(compressed)
 	if err != nil {

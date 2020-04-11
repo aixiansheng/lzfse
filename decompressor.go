@@ -20,9 +20,9 @@ const (
 )
 
 type decompressor struct {
-	r            *cachedReader
-	w            *cachedWriter
-	payload	     io.Reader
+	r       *cachedReader
+	w       *cachedWriter
+	payload io.Reader
 }
 
 func decodeUncompressedBlock(r *cachedReader, w *cachedWriter) (err error) {
@@ -97,8 +97,8 @@ func (d *decompressor) decompressAll() (io.Reader, error) {
 
 func NewReader(r io.Reader) *decompressor {
 	d := &decompressor{
-		r:     newCachedReader(r),
-		w:     newCachedWriter(),
+		r: newCachedReader(r),
+		w: newCachedWriter(),
 	}
 
 	return d

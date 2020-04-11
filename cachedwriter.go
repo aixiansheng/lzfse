@@ -5,7 +5,7 @@ import (
 )
 
 type cachedWriter struct {
-	buf * bytes.Buffer
+	buf *bytes.Buffer
 }
 
 func newCachedWriter() *cachedWriter {

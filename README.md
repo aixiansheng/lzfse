@@ -1,9 +1,9 @@
-# A LZFSE decompressor written in Go
+# An LZFSE decompressor written in Go
 
 ```
 import (
 	"os"
-	"gihub.com/aixiansheng/go-pure-lzfse"
+	"gihub.com/aixiansheng/lzfse"
 )
 
 inf, err := os.Open("some.lzfse")

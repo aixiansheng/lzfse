@@ -21,12 +21,6 @@ func newInStream(bits int32, payload []byte) (*inStream, error) {
 		idx:     len(payload),
 	}
 
-	//	fmt.Printf("bits = %2x; pbuf - buf_start = %d\n", uint64(bits), len(payload));
-	//	for i := len(payload) - 10; i < len(payload); i++ {
-	//		fmt.Printf("%2.2x ", int(payload[i]))
-	//	}
-	//	fmt.Println()
-
 	if 0 != bits {
 		fs.idx -= 8
 		fs.accum = binary.LittleEndian.Uint64(payload[fs.idx:])
@@ -119,14 +113,17 @@ type literalDecoderEntry struct {
 	delta  int16
 }
 
+func (e *literalDecoderEntry) toInt32() int32 {
+	return int32(e.k) | (int32(e.symbol) << 8) | (int32(e.delta) << 16)
+}
+
 type literalDecoderTable []literalDecoderEntry
 
 func newLiteralDecoderTable(nstates, nsymbols int, freq []uint16) (literalDecoderTable, error) {
-	// fse_init_decoder_table
-	//table := make(literalDecoderTable, 0, 32)
 	table := make(literalDecoderTable, 1024)
 	n_clz := bits.LeadingZeros32(uint32(nstates))
 	sum_of_freq := 0
+	idx := 0
 
 	for i := 0; i < nsymbols; i++ {
 		f := int(freq[i])
@@ -155,9 +152,11 @@ func newLiteralDecoderTable(nstates, nsymbols int, freq []uint16) (literalDecode
 				e.delta = int16((j - j0) << (k - 1))
 			}
 
-			table = append(table, e)
+			table[idx] = e
+			idx++
 		}
 	}
+
 	return table, nil
 }
 
@@ -175,8 +174,8 @@ func newLiteralDecoder(state State, table literalDecoderTable) *literalDecoder {
 
 func (d *literalDecoder) Decode(in *inStream) uint8 {
 	e := d.table[d.state]
-	eint := int32(uint32(e.k<<24) | uint32(e.symbol<<16) | uint32(e.delta))
-	d.state = State(eint>>16) + State(in.pull(eint*0xff))
+	eint := e.toInt32()
+	d.state = State(eint>>16) + State(in.pull(eint&0xff))
 	return uint8(fse_extract_bits(uint64(eint), 8, 8))
 }
 

@@ -19,22 +19,18 @@ const (
 
 type decompressor struct {
 	r            *cachedReader
+	w            *cachedWriter
 	pipeR        *io.PipeReader
 	pipeW        *io.PipeWriter
 	handlerError error
 }
 
-func decodeUncompressedBlock(r *cachedReader, w io.Writer) error {
+func decodeUncompressedBlock(r *cachedReader, w *cachedWriter) (err error) {
 	var n_raw_bytes uint32
-	if err := binary.Read(r, binary.LittleEndian, &n_raw_bytes); err != nil {
-		return err
+	if err = binary.Read(r, binary.LittleEndian, &n_raw_bytes); err == nil {
+		_, err = io.CopyN(w, r, int64(n_raw_bytes))
 	}
-
-	if _, err := io.CopyN(w, r, int64(n_raw_bytes)); err != nil {
-		return err
-	}
-
-	return nil
+	return
 }
 
 func readBlockMagic(r io.Reader) (magic Magic, err error) {
@@ -42,10 +38,10 @@ func readBlockMagic(r io.Reader) (magic Magic, err error) {
 	return
 }
 
-type blockHandler func(*cachedReader, io.Writer) error
+type blockHandler func(*cachedReader, *cachedWriter) error
 
 func (d *decompressor) handleBlock(handler blockHandler) (Magic, error) {
-	if err := handler(d.r, d.pipeW); err != nil {
+	if err := handler(d.r, d.w); err != nil {
 		return INVALID, err
 	}
 
@@ -60,6 +56,7 @@ func NewReader(r io.Reader) *decompressor {
 	pipeR, pipeW := io.Pipe()
 	d := &decompressor{
 		r:     newCachedReader(r),
+		w:     newCachedWriter(pipeW),
 		pipeR: pipeR,
 		pipeW: pipeW,
 	}

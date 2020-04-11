@@ -1,7 +1,6 @@
 package lzfse
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -67,13 +66,8 @@ var d_base_value = [LZFSE_ENCODE_D_SYMBOLS]int32{
 }
 
 type lzfseDecoder struct {
-	//	n_matches           uint32
-	//	n_lmd_payload_bytes uint32
-	//	l_state             State
-	//	m_state             State
-	//	d_state             State
-
 	v1Header *lzfseV1Header
+	w        *cachedWriter
 
 	literals [LZFSE_LITERALS_PER_BLOCK + 64]byte
 
@@ -81,9 +75,6 @@ type lzfseDecoder struct {
 	lDecoder    *lmdDecoder
 	mDecoder    *lmdDecoder
 	dDecoder    *lmdDecoder
-
-	buffer *backExtendedBuffer
-	w      io.Writer
 }
 
 type lzfseV1Header struct {
@@ -113,10 +104,15 @@ type lzfseV2Header struct {
 
 func (dec *lzfseDecoder) copyMatch(m, d int) error {
 	b := make([]byte, m)
-	if _, err := dec.buffer.ReadAt(b, int64(d)); err != nil {
-		return err
+	n, err := dec.w.ReadRelativeToEnd(b, int64(d))
+	if err == nil && n != len(b) {
+		// There weren't enough bytes in the buffer, so we should repeat them until we fill b.
+		// (this is what would happen if there was an overlapped copy)
+		for i := 0; i < len(b)-n; i++ {
+			b[n+i] = b[i]
+		}
 	}
-	_, err := dec.buffer.Write(b)
+	_, err = dec.w.Write(b)
 	return err
 }
 
@@ -136,12 +132,12 @@ func (dec *lzfseDecoder) Decode() error {
 			D = newD
 		}
 
-		//fmt.Printf("L=%d M=%d D=%d blen=%d\n", L, M, D, dec.buffer.Len())
+		//fmt.Printf("0x%.16x L=%d M=%d D=%d\n", len(dec.w.buf), L, M, D)
 
 		// Literals...
 		b := make([]byte, L)
 		m := copy(b, dec.literals[literalIdx:literalIdx+int(L)])
-		if n, err := dec.buffer.Write(b); n != m {
+		if n, err := dec.w.Write(b); n != m {
 			return err
 		}
 
@@ -151,10 +147,6 @@ func (dec *lzfseDecoder) Decode() error {
 		if err := dec.copyMatch(int(M), int(D)); err != nil {
 			return err
 		}
-	}
-
-	if _, err := dec.w.Write(dec.buffer.Bytes()); err != nil {
-		return err
 	}
 
 	return nil
@@ -218,35 +210,8 @@ func (header *lzfseV1Header) Check() (err error) {
 	return
 }
 
-/////// @@@@@@@@@@@@ NEED TO WRAP BUFFER SO IT CAN SEEK FURTHER BACK
-
-type backExtendedBuffer struct {
-	buffer    *bytes.Buffer
-	prevBytes []byte
-}
-
-func (be *backExtendedBuffer) Write(b []byte) (int, error) {
-	return be.buffer.Write(b)
-}
-
-func (be *backExtendedBuffer) ReadAt(b []byte, offset int64) (int, error) {
-	copied := 0
-	if offset < 0 {
-		copied = copy(b, be.prevBytes[int64(len(be.prevBytes))+offset:])
-	}
-	copied += copy(b[copied:], be.buffer.Bytes())
-	return copied, nil
-}
-
-func (be *backExtendedBuffer) Bytes() []byte {
-	return be.buffer.Bytes()
-}
-
-func newLzfseDecoder(r *cachedReader, w io.Writer, v1 *lzfseV1Header, headerOffset int) (*lzfseDecoder, error) {
-	b := make([]byte, 0, v1.n_payload_bytes)
-	buffer := bytes.NewBuffer(b)
+func newLzfseDecoder(r *cachedReader, w *cachedWriter, v1 *lzfseV1Header, headerOffset int) (*lzfseDecoder, error) {
 	decoder := &lzfseDecoder{
-		buffer:   &backExtendedBuffer{buffer, r.Bytes()},
 		v1Header: v1,
 		w:        w,
 	}
@@ -298,7 +263,7 @@ func newLzfseDecoder(r *cachedReader, w io.Writer, v1 *lzfseV1Header, headerOffs
 	}
 
 	cachedBytes := r.Bytes()
-	//cachedBytes = cachedBytes[len(cachedBytes)-int(v1.n_lmd_payload_bytes):]
+	cachedBytes = cachedBytes[len(cachedBytes)-int(v1.n_lmd_payload_bytes):]
 
 	in2, err := newInStream(int32(v1.lmd_bits), cachedBytes)
 	if err != nil {
@@ -371,7 +336,7 @@ func v1HeaderFromV2(headerV2 *lzfseV2Header) (*lzfseV1Header, error) {
 	copy(headerV1.l_freq[:], freq[0:20])       // LZFSE_ENCODE_L_SYMBOLS
 	copy(headerV1.m_freq[:], freq[20:40])      // LZFSE_ENCODE_M_SYMBOLS
 	copy(headerV1.d_freq[:], freq[40:104])     // LZFSE_ENCODE_D_SYMBOLS
-	copy(headerV1.literal_freq[:], freq[144:]) // LZFSE_ENCODE_LITERAL_SYMBOLS
+	copy(headerV1.literal_freq[:], freq[104:]) // LZFSE_ENCODE_LITERAL_SYMBOLS
 
 	if accum_nbits >= 8 || freq_idx != freq_idx_max {
 		return nil, fmt.Errorf("accum_nbits (%d) >= 8 || freq_idx (%d) != freq_idx_max (%d)",
@@ -381,7 +346,7 @@ func v1HeaderFromV2(headerV2 *lzfseV2Header) (*lzfseV1Header, error) {
 	return headerV1, nil
 }
 
-func decodeCompressedV1Block(r *cachedReader, w io.Writer) error {
+func decodeCompressedV1Block(r *cachedReader, w *cachedWriter) error {
 	if decoder, err := newLzfseV1Decoder(r, w); err != nil {
 		return err
 	} else {
@@ -389,7 +354,7 @@ func decodeCompressedV1Block(r *cachedReader, w io.Writer) error {
 	}
 }
 
-func decodeCompressedV2Block(r *cachedReader, w io.Writer) error {
+func decodeCompressedV2Block(r *cachedReader, w *cachedWriter) error {
 	if decoder, err := newLzfseV2Decoder(r, w); err != nil {
 		return err
 	} else {
@@ -397,7 +362,7 @@ func decodeCompressedV2Block(r *cachedReader, w io.Writer) error {
 	}
 }
 
-func newLzfseV1Decoder(cr *cachedReader, w io.Writer) (*lzfseDecoder, error) {
+func newLzfseV1Decoder(cr *cachedReader, w *cachedWriter) (*lzfseDecoder, error) {
 	var v1Header lzfseV1Header
 	if err := binary.Read(cr, binary.LittleEndian, &v1Header); err != nil {
 		return nil, err
@@ -406,7 +371,7 @@ func newLzfseV1Decoder(cr *cachedReader, w io.Writer) (*lzfseDecoder, error) {
 	}
 }
 
-func newLzfseV2Decoder(cr *cachedReader, w io.Writer) (*lzfseDecoder, error) {
+func newLzfseV2Decoder(cr *cachedReader, w *cachedWriter) (*lzfseDecoder, error) {
 	startLen := len(cr.Bytes())
 	var v2Header lzfseV2Header
 	if err := binary.Read(cr, binary.LittleEndian, &v2Header); err != nil {

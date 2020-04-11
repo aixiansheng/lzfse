@@ -9,14 +9,14 @@ import (
 )
 
 func TestSmall(t *testing.T) {
-	DoDecomp("cmp.lz", "dec", t)
+	DoDecomp("cmp.lz", "dec", "dec.err", t)
 }
 
 func TestMedium(t *testing.T) {
-	DoDecomp("cmp2.lz", "dec2", t)
+	DoDecomp("cmp2.lz", "dec2", "dec2.err", t)
 }
 
-func DoDecomp(compressed, original string, t *testing.T) {
+func DoDecomp(compressed, original, errorOutputFile string, t *testing.T) {
 	cmp, err := os.Open(compressed)
 	if err != nil {
 		t.Errorf("Couldn't open test file")
@@ -34,17 +34,16 @@ func DoDecomp(compressed, original string, t *testing.T) {
 		t.Errorf("Couldn't readall original")
 	}
 
-	outBytes := make([]byte, len(decBytes))
-	outBuffer := bytes.NewBuffer(outBytes)
+	var buffer bytes.Buffer
 
 	d := NewReader(cmp)
 
-	n, err := io.Copy(outBuffer, d)
-	if int(n) != len(outBytes) {
-		t.Errorf("len(outBytes) != n:  %d != %d err (%v)", len(outBytes), int(n), err)
+	if n, err := io.Copy(&buffer, d); err != nil {
+		t.Errorf("Error decompressing: %v [orig= %d new=%d]", err, len(decBytes), n)
 	}
 
-	if err != nil {
-		t.Errorf("io.Copy should have returned EOF, instead it returned %v", err)
+	if !bytes.Equal(buffer.Bytes(), decBytes) {
+		t.Errorf("The outputs did not match")
+		ioutil.WriteFile(errorOutputFile, buffer.Bytes(), 0644)
 	}
 }

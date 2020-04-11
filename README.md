@@ -5,6 +5,8 @@
 > An LZFSE decompressor written in Go
 
 ```golang
+package main
+
 import (
 	"os"
 	"gihub.com/aixiansheng/lzfse"

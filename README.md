@@ -19,3 +19,15 @@ func main() {
 	io.Copy(outf, inf)
 }
 ```
+
+## Testing
+
+```
+make -C test/
+
+# all tests
+go test -v
+
+# just one test
+go test -v -run TestVariousSizes/test/test.small.dec.cmp
+```

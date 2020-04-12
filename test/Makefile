@@ -12,7 +12,7 @@ MED := 100
 LRG := 100000
 
 $(LIST): $(ALL_COMPS)
-	echo "$(ALL_COMPS)" > $@
+	echo "$(foreach i,$(ALL_COMPS),test/$(i))" > $@
 
 $(ALL_COMPS): %.dec.cmp: %.dec
 	lzfse -encode -i $< -o $@

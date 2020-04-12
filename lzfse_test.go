@@ -3,7 +3,6 @@ package lzfse
 import (
 	"bufio"
 	"bytes"
-	"flag"
 	"io"
 	"io/ioutil"
 	"os"
@@ -11,36 +10,26 @@ import (
 	"testing"
 )
 
-var onlyTestOne string
-
-func TestMain(m *testing.M) {
-	flag.StringVar(&onlyTestOne, "onlyTestOne", "", "Only test the specified (.cmp) file")
-	flag.Parse()
-	os.Exit(m.Run())
-}
-
-// Run make -f test.mk to generate the data.
+// Run make -C test/ to generate the data.
 func TestVariousSizes(t *testing.T) {
-	if testFile, err := os.Open("test.list"); err == nil {
+	if testFile, err := os.Open("test/test.list"); err == nil {
 		defer testFile.Close()
 		scanner := bufio.NewScanner(testFile)
 		scanner.Split(bufio.ScanLines)
 
 		for scanner.Scan() {
 			for _, compressedInput := range strings.Fields(scanner.Text()) {
-				if onlyTestOne == compressedInput || onlyTestOne == "" {
-					decompressedInput := strings.TrimSuffix(compressedInput, ".cmp")
-					errorFile := decompressedInput + ".err"
+				decompressedInput := strings.TrimSuffix(compressedInput, ".cmp")
+				errorFile := decompressedInput + ".err"
+				t.Run(compressedInput, func(t *testing.T) {
 					DoDecomp(compressedInput, decompressedInput, errorFile, t)
-				}
+				})
 			}
 		}
 	}
 }
 
 func DoDecomp(compressed, original, errorOutputFile string, t *testing.T) {
-	t.Logf("Testing lzfse on %s -> %s (error will be in %s)", compressed, original, errorOutputFile)
-
 	cmp, err := os.Open(compressed)
 	if err != nil {
 		t.Errorf("Couldn't open test file")

@@ -7,6 +7,7 @@ import (
 	"io"
 )
 
+// Magic defines LZFSE and LZVN block magic numbers.
 type Magic uint32
 
 const (
@@ -48,6 +49,7 @@ func (d *decompressor) handleBlock(handler blockHandler) (Magic, error) {
 	return readBlockMagic(d.r)
 }
 
+// Read decompresses the input data and returns the number of bytes and any error encountered.
 func (d *decompressor) Read(b []byte) (int, error) {
 	if payload, err := d.decompressedPayload(); err == nil {
 		return payload.Read(b)
@@ -56,6 +58,7 @@ func (d *decompressor) Read(b []byte) (int, error) {
 	}
 }
 
+// decompressedPayload decompresses the entire payload and returns a reader for the resulting data.
 func (d *decompressor) decompressedPayload() (io.Reader, error) {
 	var err error
 	if d.payload == nil {
@@ -64,6 +67,7 @@ func (d *decompressor) decompressedPayload() (io.Reader, error) {
 	return d.payload, err
 }
 
+// decompressAll decompresses the entire payload and returns a reader for the resulting data.
 func (d *decompressor) decompressAll() (io.Reader, error) {
 	var err error
 	magic := LZFSE_NO_BLOCK_MAGIC
@@ -95,6 +99,7 @@ func (d *decompressor) decompressAll() (io.Reader, error) {
 	return nil, err
 }
 
+// NewReader creates a decompressor that implements the io.Reader interface.
 func NewReader(r io.Reader) *decompressor {
 	d := &decompressor{
 		r: newCachedReader(r),

@@ -85,14 +85,14 @@ func newLmdDecoderTable(nstates, nsymbols int, freq []uint16, symbol_vbits []uin
 	return table
 }
 
-type State uint16
+type fseState uint16
 
 type lmdDecoder struct {
-	state State
+	state fseState
 	table lmdDecoderTable
 }
 
-func newLmdDecoder(state State, table lmdDecoderTable) *lmdDecoder {
+func newLmdDecoder(state fseState, table lmdDecoderTable) *lmdDecoder {
 	return &lmdDecoder{
 		state: state,
 		table: table,
@@ -103,7 +103,7 @@ func (d *lmdDecoder) Decode(in *inStream) int32 {
 	// fse_value_decode
 	entry := d.table[d.state]
 	state_and_value_bits := uint32(in.pull(int32(entry.total_bits)))
-	d.state = State(uint32(entry.delta) + (state_and_value_bits >> entry.value_bits))
+	d.state = fseState(uint32(entry.delta) + (state_and_value_bits >> entry.value_bits))
 	return int32(uint64(entry.vbase) + fse_mask_lsb64(uint64(state_and_value_bits), uint16(entry.value_bits)))
 }
 
@@ -162,10 +162,10 @@ func newLiteralDecoderTable(nstates, nsymbols int, freq []uint16) (literalDecode
 
 type literalDecoder struct {
 	table literalDecoderTable
-	state State
+	state fseState
 }
 
-func newLiteralDecoder(state State, table literalDecoderTable) *literalDecoder {
+func newLiteralDecoder(state fseState, table literalDecoderTable) *literalDecoder {
 	return &literalDecoder{
 		table: table,
 		state: state,
@@ -175,7 +175,7 @@ func newLiteralDecoder(state State, table literalDecoderTable) *literalDecoder {
 func (d *literalDecoder) Decode(in *inStream) uint8 {
 	e := d.table[d.state]
 	eint := e.toInt32()
-	d.state = State(eint>>16) + State(in.pull(eint&0xff))
+	d.state = fseState(eint>>16) + fseState(in.pull(eint&0xff))
 	return uint8(fse_extract_bits(uint64(eint), 8, 8))
 }
 

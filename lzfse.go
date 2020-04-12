@@ -85,11 +85,11 @@ type lzfseV1Header struct {
 	n_literal_payload_bytes uint32
 	n_lmd_payload_bytes     uint32
 	literal_bits            uint32
-	literal_state           [4]State
+	literal_state           [4]fseState
 	lmd_bits                uint32
-	l_state                 State
-	m_state                 State
-	d_state                 State
+	l_state                 fseState
+	m_state                 fseState
+	d_state                 fseState
 	l_freq                  [LZFSE_ENCODE_L_SYMBOLS]uint16
 	m_freq                  [LZFSE_ENCODE_M_SYMBOLS]uint16
 	d_freq                  [LZFSE_ENCODE_D_SYMBOLS]uint16
@@ -289,18 +289,18 @@ func v1HeaderFromV2(headerV2 *lzfseV2Header) (*lzfseV1Header, error) {
 		n_literals:              extract32(v0, 0, 20),
 		n_literal_payload_bytes: extract32(v0, 20, 20),
 		literal_bits:            extract32(v0, 60, 3) - 7,
-		literal_state: [4]State{
-			State(extract32(v1, 0, 10)),
-			State(extract32(v1, 10, 10)),
-			State(extract32(v1, 20, 10)),
-			State(extract32(v1, 30, 10)),
+		literal_state: [4]fseState{
+			fseState(extract32(v1, 0, 10)),
+			fseState(extract32(v1, 10, 10)),
+			fseState(extract32(v1, 20, 10)),
+			fseState(extract32(v1, 30, 10)),
 		},
 		n_matches:           extract32(v0, 40, 20),
 		n_lmd_payload_bytes: extract32(v1, 40, 20),
 		lmd_bits:            extract32(v1, 60, 3) - 7,
-		l_state:             State(extract32(v2, 32, 10)),
-		m_state:             State(extract32(v2, 42, 10)),
-		d_state:             State(extract32(v2, 52, 10)),
+		l_state:             fseState(extract32(v2, 32, 10)),
+		m_state:             fseState(extract32(v2, 42, 10)),
+		d_state:             fseState(extract32(v2, 52, 10)),
 	}
 	headerV1.n_payload_bytes = headerV1.n_literal_payload_bytes - headerV1.n_lmd_payload_bytes
 

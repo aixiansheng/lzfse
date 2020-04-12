@@ -8,17 +8,17 @@ import (
 
 type lzvnDecoder struct {
 	r      io.Reader
-	w      io.Writer
+	w      *cachedWriter
 	buffer *bytes.Buffer
 
 	header struct {
-		n_raw_bytes     uint32
-		n_payload_bytes uint32
+		N_raw_bytes     uint32
+		N_payload_bytes uint32
 	}
 }
 
 // at the beginning of each lzvn block
-func newLzvnDecoder(r io.Reader, w io.Writer) (*lzvnDecoder, error) {
+func newLzvnDecoder(r io.Reader, w *cachedWriter) (*lzvnDecoder, error) {
 	decoder := &lzvnDecoder{
 		r: r,
 		w: w,
@@ -28,7 +28,7 @@ func newLzvnDecoder(r io.Reader, w io.Writer) (*lzvnDecoder, error) {
 		return nil, err
 	}
 
-	b := make([]byte, 0, decoder.header.n_payload_bytes)
+	b := make([]byte, 0, decoder.header.N_payload_bytes)
 	decoder.buffer = bytes.NewBuffer(b)
 
 	return decoder, nil
@@ -214,10 +214,6 @@ loop:
 		}
 	}
 
-	if _, err := dec.w.Write(dec.buffer.Bytes()); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -229,27 +225,24 @@ func decodeLZVNBlock(cr *cachedReader, cw *cachedWriter) error {
 	}
 }
 
-func bufferCopyMD(buf *bytes.Buffer, m, d int) error {
-	bytes := buf.Bytes()
-	start := buf.Len() - d
-	//fmt.Printf("  m=%d d=%d buf.Len=%d start=%d\n", m, d, buf.Len(), start)
-	toCopy := bytes[start : start+m]
-
-	if n, err := buf.Write(toCopy); n != len(toCopy) {
-		return err
-	}
-
-	return nil
-}
-
 // copyMatch copies M bytes from output - D to output
 func (dec *lzvnDecoder) copyMatch(m byte, d uint16) error {
-	return bufferCopyMD(dec.buffer, int(m), int(d))
+	b := make([]byte, m)
+	n, err := dec.w.ReadRelativeToEnd(b, int64(d))
+	if err == nil && n != len(b) {
+		// There weren't enough bytes in the buffer, so we should repeat them until we fill b.
+		// (this is what would happen if there was an overlapped copy)
+		for i := 0; i < len(b)-n; i++ {
+			b[n+i] = b[i]
+		}
+	}
+	_, err = dec.w.Write(b)
+	return err
 }
 
 // copyLiteral copies L bytes from src to dst
 func (dec *lzvnDecoder) copyLiteral(l byte) error {
-	if _, err := io.CopyN(dec.buffer, dec.r, int64(l)); err != nil {
+	if _, err := io.CopyN(dec.w, dec.r, int64(l)); err != nil {
 		return err
 	}
 

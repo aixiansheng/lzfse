@@ -22,6 +22,11 @@ jobs:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
+    - name: Build Dependencies (macOS)
+      run: |
+          brew update
+          brew install lzfse
+
     - name: Generate test data
       run: make -C test
 

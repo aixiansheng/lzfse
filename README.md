@@ -1,6 +1,6 @@
 # lzfse
 
-[![Go](https://github.com/aixiansheng/lzfseworkflows/Go/badge.svg?branch=master)](https://github.com/aixiansheng/lzfse/actions) [![GoDoc](https://godoc.org/github.com/aixiansheng/lzfse?status.svg)](https://pkg.go.dev/github.com/aixiansheng/lzfse)
+[![Go](https://github.com/aixiansheng/lzfse/workflows/Go/badge.svg?branch=master)](https://github.com/aixiansheng/lzfse/actions) [![GoDoc](https://godoc.org/github.com/aixiansheng/lzfse?status.svg)](https://pkg.go.dev/github.com/aixiansheng/lzfse)
 
 > An LZFSE decompressor written in Go
 

@@ -1,26 +1,35 @@
 package lzfse
 
 import (
+	"bufio"
 	"bytes"
 	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 )
 
-func TestSmall(t *testing.T) {
-	DoDecomp("cmp.lz", "dec", "dec.err", t)
-}
+// Run make -f test.mk to generate the data.
+func TestVariousSizes(t *testing.T) {
+	if testFile, err := os.Open("test.list"); err == nil {
+		defer testFile.Close()
+		scanner := bufio.NewScanner(testFile)
+		scanner.Split(bufio.ScanLines)
 
-func TestMedium(t *testing.T) {
-	DoDecomp("cmp2.lz", "dec2", "dec2.err", t)
-}
-
-func TestKern(t *testing.T) {
-	DoDecomp("kernel.lzfse", "kernel.dec", "kernel.err", t)
+		for scanner.Scan() {
+			for _, compressedInput := range strings.Fields(scanner.Text()) {
+				decompressedInput := strings.TrimSuffix(compressedInput, ".cmp")
+				errorFile := decompressedInput + ".err"
+				DoDecomp(compressedInput, decompressedInput, errorFile, t)
+			}
+		}
+	}
 }
 
 func DoDecomp(compressed, original, errorOutputFile string, t *testing.T) {
+	t.Logf("Testing lzfse on %s -> %s (error will be in %s)", compressed, original, errorOutputFile)
+
 	cmp, err := os.Open(compressed)
 	if err != nil {
 		t.Errorf("Couldn't open test file")

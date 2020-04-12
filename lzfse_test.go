@@ -3,12 +3,21 @@ package lzfse
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"io"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
 )
+
+var onlyTestOne string
+
+func TestMain(m *testing.M) {
+	flag.StringVar(&onlyTestOne, "onlyTestOne", "", "Only test the specified (.cmp) file")
+	flag.Parse()
+	os.Exit(m.Run())
+}
 
 // Run make -f test.mk to generate the data.
 func TestVariousSizes(t *testing.T) {
@@ -19,9 +28,11 @@ func TestVariousSizes(t *testing.T) {
 
 		for scanner.Scan() {
 			for _, compressedInput := range strings.Fields(scanner.Text()) {
-				decompressedInput := strings.TrimSuffix(compressedInput, ".cmp")
-				errorFile := decompressedInput + ".err"
-				DoDecomp(compressedInput, decompressedInput, errorFile, t)
+				if onlyTestOne == compressedInput || onlyTestOne == "" {
+					decompressedInput := strings.TrimSuffix(compressedInput, ".cmp")
+					errorFile := decompressedInput + ".err"
+					DoDecomp(compressedInput, decompressedInput, errorFile, t)
+				}
 			}
 		}
 	}

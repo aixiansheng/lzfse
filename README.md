@@ -16,7 +16,7 @@ func main() {
 	inf, err := os.Open("some.lzfse")
 	outf, err := os.Create("some.file")
 	d := lzfse.NewReader(fh)
-	io.Copy(outf, inf)
+	io.Copy(outf, d)
 }
 ```
 

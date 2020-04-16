@@ -3,12 +3,45 @@ package lzfse
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"io"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
 )
+
+func allocInStreams(n int) ([]*inStream, error){
+	ret := make([]*inStream, n)
+	payload := make([]byte, 64)
+	rand.Read(payload)
+
+	for i := 0; i < n; i++ {
+		var err error
+		ret[i], err = newInStream(0, payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ret, nil
+}
+
+func BenchmarkFsePull(b *testing.B) {
+	inStreams, err := allocInStreams(b.N)
+	if err != nil {
+		b.FailNow()
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		s := inStreams[i]
+		for s.accum_nbits >= 1 {
+			s.pull(1)
+		}
+	}
+}
 
 // Run make -C test/ to generate the data.
 func TestVariousSizes(t *testing.T) {

@@ -21,7 +21,7 @@ func newInStream(bits int32, payload []byte) (*inStream, error) {
 		idx:     len(payload),
 	}
 
-	if 0 != bits {
+	if bits != 0 {
 		fs.idx -= 8
 		fs.accum = binary.LittleEndian.Uint64(payload[fs.idx:])
 		fs.accum_nbits = bits + 64
@@ -104,7 +104,7 @@ func (d *lmdDecoder) Decode(in *inStream) int32 {
 	entry := d.table[d.state]
 	state_and_value_bits := uint32(in.pull(int32(entry.total_bits)))
 	d.state = fseState(uint32(entry.delta) + (state_and_value_bits >> entry.value_bits))
-	return int32(uint64(entry.vbase) + fse_mask_lsb64(uint64(state_and_value_bits), uint16(entry.value_bits)))
+	return int32(uint64(entry.vbase) + fse_mask_lsb64(uint64(state_and_value_bits), uint8(entry.value_bits)))
 }
 
 type literalDecoderEntry struct {
@@ -204,41 +204,24 @@ var lsb64Mtable = [65]uint64{
 	0x7fffffffffffffff, 0xffffffffffffffff,
 }
 
-func fse_mask_lsb64(x uint64, nbits uint16) uint64 {
+func fse_mask_lsb64(x uint64, nbits uint8) uint64 {
 	return x & lsb64Mtable[nbits]
 }
 
-var lsb32Mtable = [33]uint32{
-	0x00000000, 0x00000001, 0x00000003,
-	0x00000007, 0x0000000f, 0x0000001f,
-	0x0000003f, 0x0000007f, 0x000000ff,
-	0x000001ff, 0x000003ff, 0x000007ff,
-	0x00000fff, 0x00001fff, 0x00003fff,
-	0x00007fff, 0x0000ffff, 0x0001ffff,
-	0x0003ffff, 0x0007ffff, 0x000fffff,
-	0x001fffff, 0x003fffff, 0x007fffff,
-	0x00ffffff, 0x01ffffff, 0x03ffffff,
-	0x07ffffff, 0x0fffffff, 0x1fffffff,
-	0x3fffffff, 0x7fffffff, 0xffffffff,
-}
-
-// Mask the NBITS lsb of X. 0 <= NBITS < 32
-func fse_mask_lsb32(x uint32, nbits int32) uint32 {
-	return x & lsb32Mtable[nbits]
-}
-
 func fse_extract_bits(x uint64, start, nbits int32) uint64 {
-	return fse_mask_lsb64(x>>start, uint16(nbits))
+	return fse_mask_lsb64(x>>start, uint8(nbits))
 }
 
+// pull consumes the specified number of bits, then returns the value of accum shifted by the remainder.
+// accum is restricted to the number of remaining accum bits.
 func (fs *inStream) pull(bits int32) uint64 {
 	if bits < 0 || bits > fs.accum_nbits {
 		panic("bad juju")
 	}
 
 	fs.accum_nbits -= bits
-	var result uint64 = uint64(fs.accum) >> fs.accum_nbits
-	fs.accum = fse_mask_lsb64(fs.accum, uint16(fs.accum_nbits))
+	result := fs.accum >> fs.accum_nbits
+	fs.accum = fse_mask_lsb64(fs.accum, uint8(fs.accum_nbits))
 	return result
 }
 
@@ -248,7 +231,7 @@ func (in *inStream) flush() error {
 
 	incoming := binary.LittleEndian.Uint64(in.payload[in.idx : in.idx+8])
 
-	in.accum = (in.accum << nbits) | fse_mask_lsb64(incoming, uint16(nbits))
+	in.accum = (in.accum << nbits) | fse_mask_lsb64(incoming, uint8(nbits))
 	in.accum_nbits += nbits
 
 	if in.accum_nbits < 56 || in.accum_nbits >= 64 || in.accum>>in.accum_nbits != 0 {

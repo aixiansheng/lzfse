@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 const (
@@ -210,7 +209,7 @@ func (header *lzfseV1Header) Check() (err error) {
 	return
 }
 
-func newLzfseDecoder(r *cachedReader, w *cachedWriter, v1 *lzfseV1Header, headerOffset int) (*lzfseDecoder, error) {
+func newLzfseDecoder(r combinedReader, w *cachedWriter, v1 *lzfseV1Header, headerOffset int) (*lzfseDecoder, error) {
 	decoder := &lzfseDecoder{
 		v1Header: v1,
 		w:        w,
@@ -230,13 +229,9 @@ func newLzfseDecoder(r *cachedReader, w *cachedWriter, v1 *lzfseV1Header, header
 	dDecoderTable := newLmdDecoderTable(LZFSE_ENCODE_D_STATES, LZFSE_ENCODE_D_SYMBOLS, v1.d_freq[:], d_extra_bits[:], d_base_value[:])
 
 	headerOffset += 4
-	_, err = io.CopyN(ioutil.Discard, r, int64(v1.n_literal_payload_bytes)-int64(headerOffset))
-	if err != nil {
-		return nil, err
-	}
+	r.Seek(int64(v1.n_literal_payload_bytes)-int64(headerOffset), io.SeekCurrent)
 
-	rbytes := r.Bytes()
-	in, err := newInStream(int32(v1.literal_bits), rbytes)
+	in, err := newInStream(int32(v1.literal_bits), r)
 	if err != nil {
 		return nil, err
 	}
@@ -257,15 +252,9 @@ func newLzfseDecoder(r *cachedReader, w *cachedWriter, v1 *lzfseV1Header, header
 		decoder.literals[i+3] = literalDecoder3.Decode(in)
 	}
 
-	_, err = io.CopyN(ioutil.Discard, r, int64(v1.n_lmd_payload_bytes))
-	if err != nil {
-		return nil, err
-	}
+	r.Seek(int64(v1.n_lmd_payload_bytes), io.SeekCurrent)
 
-	cachedBytes := r.Bytes()
-	cachedBytes = cachedBytes[len(cachedBytes)-int(v1.n_lmd_payload_bytes):]
-
-	in2, err := newInStream(int32(v1.lmd_bits), cachedBytes)
+	in2, err := newInStream(int32(v1.lmd_bits), r)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +335,7 @@ func v1HeaderFromV2(headerV2 *lzfseV2Header) (*lzfseV1Header, error) {
 	return headerV1, nil
 }
 
-func decodeCompressedV1Block(r *cachedReader, w *cachedWriter) error {
+func decodeCompressedV1Block(r combinedReader, w *cachedWriter) error {
 	if decoder, err := newLzfseV1Decoder(r, w); err != nil {
 		return err
 	} else {
@@ -354,7 +343,7 @@ func decodeCompressedV1Block(r *cachedReader, w *cachedWriter) error {
 	}
 }
 
-func decodeCompressedV2Block(r *cachedReader, w *cachedWriter) error {
+func decodeCompressedV2Block(r combinedReader, w *cachedWriter) error {
 	if decoder, err := newLzfseV2Decoder(r, w); err != nil {
 		return err
 	} else {
@@ -362,30 +351,30 @@ func decodeCompressedV2Block(r *cachedReader, w *cachedWriter) error {
 	}
 }
 
-func newLzfseV1Decoder(cr *cachedReader, w *cachedWriter) (*lzfseDecoder, error) {
+func newLzfseV1Decoder(r combinedReader, w *cachedWriter) (*lzfseDecoder, error) {
 	var v1Header lzfseV1Header
-	if err := binary.Read(cr, binary.LittleEndian, &v1Header); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &v1Header); err != nil {
 		return nil, err
 	} else {
-		return newLzfseDecoder(cr, w, &v1Header, 0)
+		return newLzfseDecoder(r, w, &v1Header, 0)
 	}
 }
 
-func newLzfseV2Decoder(cr *cachedReader, w *cachedWriter) (*lzfseDecoder, error) {
-	startLen := len(cr.Bytes())
+func newLzfseV2Decoder(r combinedReader, w *cachedWriter) (*lzfseDecoder, error) {
+	startLen, _ := r.Seek(0, io.SeekCurrent)
 	var v2Header lzfseV2Header
-	if err := binary.Read(cr, binary.LittleEndian, &v2Header); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &v2Header); err != nil {
 		return nil, err
 	}
 
 	if v1Header, err := v1HeaderFromV2(&v2Header); err != nil {
 		return nil, err
 	} else {
-		endLen := len(cr.Bytes())
+		endLen, _ := r.Seek(0, io.SeekCurrent)
 		totalSeek := endLen - startLen
-		headerSize := int(extract32(v2Header.Packed_fields[2], 0, 32))
-		headerOffset := totalSeek - headerSize
-		return newLzfseDecoder(cr, w, v1Header, headerOffset)
+		headerSize := int64(extract32(v2Header.Packed_fields[2], 0, 32))
+		headerOffset := int(totalSeek - headerSize)
+		return newLzfseDecoder(r, w, v1Header, headerOffset)
 	}
 }
 

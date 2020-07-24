@@ -21,12 +21,12 @@ const (
 )
 
 type decompressor struct {
-	r       *cachedReader
+	r       combinedReader
 	w       *cachedWriter
 	payload io.Reader
 }
 
-func decodeUncompressedBlock(r *cachedReader, w *cachedWriter) (err error) {
+func decodeUncompressedBlock(r combinedReader, w *cachedWriter) (err error) {
 	var n_raw_bytes uint32
 	if err = binary.Read(r, binary.LittleEndian, &n_raw_bytes); err == nil {
 		_, err = io.CopyN(w, r, int64(n_raw_bytes))
@@ -34,12 +34,12 @@ func decodeUncompressedBlock(r *cachedReader, w *cachedWriter) (err error) {
 	return
 }
 
-func readBlockMagic(r io.Reader) (magic Magic, err error) {
+func readBlockMagic(r combinedReader) (magic Magic, err error) {
 	err = binary.Read(r, binary.LittleEndian, &magic)
 	return
 }
 
-type blockHandler func(*cachedReader, *cachedWriter) error
+type blockHandler func(combinedReader, *cachedWriter) error
 
 func (d *decompressor) handleBlock(handler blockHandler) (Magic, error) {
 	if err := handler(d.r, d.w); err != nil {
@@ -100,9 +100,9 @@ func (d *decompressor) decompressAll() (io.Reader, error) {
 }
 
 // NewReader creates a decompressor that implements the io.Reader interface.
-func NewReader(r io.Reader) *decompressor {
+func NewReader(r combinedReader) *decompressor {
 	d := &decompressor{
-		r: newCachedReader(r),
+		r: r,
 		w: newCachedWriter(),
 	}
 

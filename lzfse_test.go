@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -18,7 +19,8 @@ func allocInStreams(n int) ([]*inStream, error){
 
 	for i := 0; i < n; i++ {
 		var err error
-		ret[i], err = newInStream(0, payload)
+		r := bytes.NewReader(payload)
+		ret[i], err = newInStream(0, r)
 		if err != nil {
 			return nil, err
 		}
@@ -63,11 +65,25 @@ func TestVariousSizes(t *testing.T) {
 }
 
 func DoDecomp(compressed, original, errorOutputFile string, t *testing.T) {
-	cmp, err := os.Open(compressed)
+	ff, err := syscall.Open(compressed, syscall.O_RDONLY, 0)
 	if err != nil {
-		t.Errorf("Couldn't open test file")
+		t.Errorf("couldn't open file")
 	}
-	defer cmp.Close()
+	var stat syscall.Stat_t
+	err = syscall.Fstat(ff, &stat)
+	if err != nil {
+		t.Errorf("Couldn't fstat")
+	}
+	fd, err := syscall.Mmap(ff, 0, int(stat.Size), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		t.Errorf("Couldn't mmap test file")
+	}
+	cmp := bytes.NewReader(fd)
+//	cmp, err := os.Open(compressed)
+//	if err != nil {
+//		t.Errorf("Couldn't open test file")
+//	}
+//	defer cmp.Close()
 
 	dec, err := os.Open(original)
 	if err != nil {

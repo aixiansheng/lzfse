@@ -3,31 +3,38 @@ package lzfse
 import (
 	"encoding/binary"
 	"errors"
+	"io"
 	"fmt"
 	"math/bits"
 )
 
 type inStream struct {
-	idx         int
-	payload     []byte
+	r	io.ReadSeeker
+	idx         int64
 	accum       uint64 // output bits
 	accum_nbits int32  // number of valid bits in accum
 }
 
 // Initialize the inStream so that its accum holds between 56 and 63 bits.
-func newInStream(bits int32, payload []byte) (*inStream, error) {
+func newInStream(bits int32, r combinedReader) (*inStream, error) {
+	idx, _ := r.Seek(0, io.SeekCurrent)
 	fs := &inStream{
-		payload: payload,
-		idx:     len(payload),
+		r: io.NewSectionReader(r, 0, idx),
+		idx: idx,
 	}
 
 	if bits != 0 {
 		fs.idx -= 8
-		fs.accum = binary.LittleEndian.Uint64(payload[fs.idx:])
+		r.Seek(fs.idx, io.SeekStart)
+		binary.Read(r, binary.LittleEndian, &fs.accum)
 		fs.accum_nbits = bits + 64
 	} else {
 		fs.idx -= 7
-		accum_bytes := append(payload[fs.idx:], 0)
+		r.Seek(fs.idx, io.SeekStart)
+		accum_bytes := make([]byte, 7)
+		r.Read(accum_bytes)
+		accum_bytes = append(accum_bytes, 0)
+
 		fs.accum = binary.LittleEndian.Uint64(accum_bytes)
 		fs.accum_nbits = bits + 56
 	}
@@ -227,9 +234,14 @@ func (fs *inStream) pull(bits int32) uint64 {
 
 func (in *inStream) flush() error {
 	var nbits int32 = (int32(63) - in.accum_nbits) & int32(-8)
-	in.idx -= int((nbits >> 3))
+	in.idx -= int64(nbits >> 3)
 
-	incoming := binary.LittleEndian.Uint64(in.payload[in.idx : in.idx+8])
+	in.r.Seek(in.idx, io.SeekStart)
+	b := make([]byte, 8)
+	in.r.Read(b)
+	incoming := binary.LittleEndian.Uint64(b)
+	//var incoming uint64
+	//binary.Read(in.r, binary.LittleEndian, &incoming)
 
 	in.accum = (in.accum << nbits) | fse_mask_lsb64(incoming, uint8(nbits))
 	in.accum_nbits += nbits

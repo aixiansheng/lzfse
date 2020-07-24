@@ -217,8 +217,8 @@ loop:
 	return nil
 }
 
-func decodeLZVNBlock(cr *cachedReader, cw *cachedWriter) error {
-	if decoder, err := newLzvnDecoder(cr, cw); err != nil {
+func decodeLZVNBlock(r combinedReader, cw *cachedWriter) error {
+	if decoder, err := newLzvnDecoder(r, cw); err != nil {
 		return err
 	} else {
 		return decoder.Decode()
